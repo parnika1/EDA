@@ -1,0 +1,11 @@
+def check_file(folder="",file=""):
+    
+    #import necessary libraries
+    import os.path
+    from os import path
+    
+    if path.exists(r"{}\{}".format(str(folder),str(file))):
+        return True             
+    else:
+        print(r"{} doesn't exist in the {}!".format(str(file),str(folder)))
+        return False
