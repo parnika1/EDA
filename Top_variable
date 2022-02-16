@@ -1,0 +1,344 @@
+def top_vars(src="", wrk="", oup="", cop="", tnp="", indsn="", resp="", ivlmt=0.1, ivrlmt=0.9, ivdlmt=0.002,inc_b10="YES"):
+    """
+    :param src: Path to input folder
+    :param wrk: Path to Work folder
+    :param oup: Path to Output folder
+    :param cop: Path to Outcopy folder
+    :param tnp: Path to Temporary folder
+    :param indsn: Name of the Input Data frame
+    :param resp: Name of the target variable
+    :param ivlmt: Minimum IV value above which all features will be considered for modeling. (0.01, 0.02, 0.03 etc. , default=0.1)
+    :param ivrlmt: IV ratio between two binning classes to determine the optimal bin to be considered. (0-1 Scale percentage , default=0.9)
+    :param ivdlmt: IV ratio between two binning classes to determine the optimal bin to be considered. (0.001, 0.002 etc. , default=0.002)
+    :param inc_b10: YES / NO Flag to determine whether decile based should be considered , default="YES"
+    :return: Dataframe containing Top features selected based on IV values
+    """
+    # Check if all the input parameters are properly specified
+    if src == "" or wrk == "" or oup == "" or cop == "" or tnp == "" or indsn == "" or resp == "" or ivrlmt == "" or ivdlmt == "" or inc_b10 == "":
+        print("INPUT PARAMETERS ARE NOT SPECIFIED PROPERLY IN FUNCTION CALL!")
+        return False
+
+    # import sys library for searching the below location for USD package(s)
+    import numpy as np
+    import pandas as pd
+    import os.path
+    from os import path
+    import sys
+    sys.path.insert(1, r'..\.')
+    from Libraries.check_path import check_path
+    from Libraries.check_file import check_file
+    from Libraries.load_file import load_pickle, load_excel
+    print("CHECK: IF SPECIFIED PATHS ARE VALID")
+    if check_path(src, wrk, oup, cop, tnp):
+        print("---------------------------------------------------")
+        print("")
+        # Creating refrences for required dataframes
+        inpdsn = str(indsn) + ".pkl"
+        ivdsn = str(indsn) + "_all_bi_iv.pkl"
+        woedsn = str(indsn) + "_all_bi_woe.pkl"
+        chidsn = str(indsn) + "_all_bi_chisq.pkl"
+        iv_per = int(ivlmt * 100)
+
+        input_df = load_pickle(src, inpdsn)
+
+        if len(input_df[resp].unique()) != 2:
+            print("TARGET VARIABLE DOES NOT BELONG TO BINARY CLASS!")
+            return False
+
+        if check_file(oup, ivdsn) and check_file(oup, woedsn) and check_file(oup, chidsn):  # Outcopy checks
+
+            # read all IV,WOE,CHISQ dataframes
+            all_iv_df = load_pickle(oup, ivdsn)
+            all_chisq_df = load_pickle(oup, chidsn)
+
+            # appending chi-square and IV results
+            temp = pd.merge(all_iv_df, all_chisq_df, how='inner', on='VAR_NAME')
+            # appending chi-square and IV results
+            temp.loc[temp['P-VALUE'] < 0.0001, 'PROB'] = '<0.0001'
+            temp.loc[(((temp['P-VALUE'] >= 0.05) & (temp.NET_IV >= 0.01)) | (
+            pd.isnull(temp['P-VALUE']) & (temp.NET_IV >= 0.01))), 'ISSUE_FLAG'] = 1
+            temp.ISSUE_FLAG.fillna(0, inplace=True)
+
+            # excluding variables where chisq doesnt corroborate with IV
+            iv_chimiss = pd.DataFrame(
+                columns=['VAR_NAME', 'IV_NAME', 'BASE_VARNAME', 'NLEVELS', 'NET_IV', 'CHIPROB', 'ISSUE_FLAG'])
+            if not(temp.ISSUE_FLAG == 1).any():
+                print('0 VARS WHERE CHISQ SIGNIFICANCE DOESNT CORROBORATE IV')
+            else:
+                print(str(len(temp[temp.ISSUE_FLAG == 1])), ' VARS WHERE CHISQ SIGNIFICANCE DOESNT CORROBORATE IV')
+                iv_chimiss = pd.DataFrame(columns=['VAR_NAME'])
+                temp2 = temp[temp.ISSUE_FLAG == 1]
+                iv_chimiss['VAR_NAME'] = temp2['VAR_NAME']
+                iv_chimiss['IV_NAME'] = temp2['BASE_VARNAME']
+                iv_chimiss['BIN_TYPE'] = temp2['VAR_NAME'].str.extract(pat='(^B[0-9]0?|BM)')
+                iv_chimiss.BIN_TYPE.fillna('NA.', inplace=True)
+                iv_chimiss['BASE_VARNAME'] = temp2['BASE_VARNAME'].replace(regex=True,
+                                                                           to_replace=r'^(TUP|TDO|TMAX|TMIN|TAVG|TCFV|TSTD|TVOL|TR)[1-6]_?',
+                                                                           value=r'')
+                iv_chimiss['BASE_VARNAME'] = iv_chimiss['BASE_VARNAME'].replace(regex=True, to_replace=r'[0-9]$',
+                                                                                value=r'')
+                iv_chimiss['NLEVELS'] = temp2['NLEVELS']
+                iv_chimiss['NET_IV'] = temp2['NET_IV']
+                iv_chimiss['CHIPROB'] = temp2['P-VALUE']
+                iv_chimiss['ISSUE_FLAG'] = temp2['ISSUE_FLAG']
+                temp = temp[~temp.ISSUE_FLAG == 1]
+
+            if inc_b10 == "YES":
+                temp = temp.sort_values(['BASE_VARNAME', 'VAR_NAME', 'NET_IV'],
+                                        ascending=[True, True, False]).reset_index(drop=True)
+                # create MAX_IV
+                a = temp.copy()
+                a['BIN'] = a['VAR_NAME'].str.extract(pat='(^B[0-9]0?|BM)')
+                a.BIN.fillna('BS', inplace=True)
+                a = a[['BASE_VARNAME', 'BIN', 'NET_IV']].pivot(index='BASE_VARNAME', columns='BIN', values='NET_IV')
+                a.reset_index(inplace=True)
+                a = a[['BASE_VARNAME', 'B10', 'B5', 'B4', 'B3', 'BM', 'BS']]
+                a.columns = ['VAR_NAME', 'IV_B10', 'IV_B5', 'IV_B4', 'IV_B3', 'IV_BM', 'IV_BS']
+                a['BASE_VARNAME'] = a['VAR_NAME'].replace(regex=True,
+                                                          to_replace=r'^(TUP|TDO|TMAX|TMIN|TAVG|TCFV|TSTD|TVOL|TR)[1-6]_?',
+                                                          value=r'')
+                a['BASE_VARNAME'] = a['BASE_VARNAME'].replace(regex=True, to_replace=r'[0-9]$', value=r'')
+                a['MAX_IV'] = a[['IV_B10', 'IV_B5', 'IV_B4', 'IV_B3', 'IV_BM', 'IV_BS']].max(axis=1, skipna=True)
+
+                # Create MAX_PREDICT_POWER
+                a.loc[a.MAX_IV >= 0.5, 'MAX_PREDICT_POWER'] = 'SUSPICIOUS'
+                a.loc[(a.MAX_IV >= 0.3) & (a.MAX_IV < 0.5), 'MAX_PREDICT_POWER'] = 'STRONG'
+                a.loc[(a.MAX_IV >= 0.1) & (a.MAX_IV < 0.3), 'MAX_PREDICT_POWER'] = 'MEDIUM'
+                a.loc[(a.MAX_IV >= ivlmt) & (a.MAX_IV < 0.1), 'MAX_PREDICT_POWER'] = 'WEAK'
+                a.loc[(a.MAX_IV < ivlmt), 'MAX_PREDICT_POWER'] = 'NONE'
+                a.MAX_PREDICT_POWER.fillna('NONE', inplace=True)
+
+                # Create CONS_IV_BUC based on ivlmt,IVRLMT,ivdlmt
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B3'] >= ivlmt)), 'R3'] = a['IV_B3'] / a['MAX_IV']
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B3'] >= ivlmt)), 'D3'] = a['MAX_IV'] - a['IV_B3']
+
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B4'] >= ivlmt)), 'R4'] = a['IV_B4'] / a['MAX_IV']
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B4'] >= ivlmt)), 'D4'] = a['MAX_IV'] - a['IV_B4']
+
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B5'] >= ivlmt)), 'R5'] = a['IV_B5'] / a['MAX_IV']
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B5'] >= ivlmt)), 'D5'] = a['MAX_IV'] - a['IV_B5']
+
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B10'] >= ivlmt)), 'R10'] = a['IV_B10'] / a['MAX_IV']
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B10'] >= ivlmt)), 'D10'] = a['MAX_IV'] - a['IV_B10']
+
+                a.loc[((a['R3'] >= ivrlmt) & (a['D3'] <= ivdlmt)), 'CONS_3'] = 1
+                a.loc[((a['R4'] >= ivrlmt) & (a['D4'] <= ivdlmt)), 'CONS_4'] = 1
+                a.loc[((a['R5'] >= ivrlmt) & (a['D5'] <= ivdlmt)), 'CONS_5'] = 1
+                a.loc[((a['R10'] >= ivrlmt) & (a['D10'] <= ivdlmt)), 'CONS_10'] = 1
+
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['MAX_IV'] == a['IV_BS'])), 'CONS_IV_BUC'] = 'DF'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['MAX_IV'] == a['IV_BM'])), 'CONS_IV_BUC'] = 'BM'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['CONS_10'] == 1)), 'CONS_IV_BUC'] = 'B10'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['CONS_5'] == 1)), 'CONS_IV_BUC'] = 'B5'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['CONS_4'] == 1)), 'CONS_IV_BUC'] = 'B4'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['CONS_3'] == 1)), 'CONS_IV_BUC'] = 'B3'
+
+                # Create BEST_IV_BUC Based on Missing value information
+                a.loc[(a['IV_BM'] >= ivlmt), 'BEST_IV_BUC'] = 'BM'
+                a.loc[(a['IV_BS'] >= ivlmt), 'BEST_IV_BUC'] = 'DF'
+                a.loc[(a['IV_B3'] >= ivlmt), 'BEST_IV_BUC'] = 'B3'
+                a.loc[(a['IV_B4'] >= ivlmt), 'BEST_IV_BUC'] = 'B4'
+                a.loc[(a['IV_B5'] >= ivlmt), 'BEST_IV_BUC'] = 'B5'
+                a.loc[(a['IV_B10'] >= ivlmt), 'BEST_IV_BUC'] = 'B10'
+
+                # Create NET_BUC
+                a['CONS_B'] = a.CONS_IV_BUC.str.extract(pat='([0-9]0?)').astype(float)
+                a['BEST_B'] = a.BEST_IV_BUC.str.extract(pat='([0-9]0?)').astype(float)
+                a.loc[(a['MAX_PREDICT_POWER'] == 'NONE'), 'NET_BUC'] = np.NaN
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE'), 'NET_BUC'] = np.NaN
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] == 'BM') & (
+                (pd.isnull(a['CONS_B']) == True) | (pd.isnull(a['BEST_B']) == True)), 'NET_BUC'] = 'BM'
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                (pd.isnull(a['CONS_B']) == True) | (pd.isnull(a['BEST_B']) == True)), 'NET_BUC'] = ''
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == True) & (pd.isnull(a['BEST_B']) == True), 'NET_BUC'] = 'DF'
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == False) & (pd.isnull(a['BEST_B']) == False) & (
+                      a['CONS_B'] == a['BEST_B']), 'NET_BUC'] = a['BEST_IV_BUC']
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == False) & (pd.isnull(a['BEST_B']) == False) & (
+                      a['CONS_B'] > a['BEST_B']), 'NET_BUC'] = a['BEST_IV_BUC']
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == False) & (pd.isnull(a['BEST_B']) == False) & (
+                      a['CONS_B'] < a['BEST_B']), 'NET_BUC'] = a['CONS_IV_BUC']
+
+                # Create FIN_IV & FIN_PREDICT_POWER
+                a.loc[(a['NET_BUC'] == 'B10'), 'FIN_IV'] = a['IV_B10']
+                a.loc[(a['NET_BUC'] == 'B5'), 'FIN_IV'] = a['IV_B5']
+                a.loc[(a['NET_BUC'] == 'B4'), 'FIN_IV'] = a['IV_B4']
+                a.loc[(a['NET_BUC'] == 'B3'), 'FIN_IV'] = a['IV_B3']
+                a.loc[(a['NET_BUC'] == 'BM'), 'FIN_IV'] = a['IV_BM']
+                a.loc[(a['NET_BUC'] == 'DF'), 'FIN_IV'] = a['IV_BS']
+                a.loc[a.FIN_IV >= 0.5, 'FIN_PREDICT_POWER'] = 'SUSPICIOUS'
+                a.loc[(a.FIN_IV >= 0.3) & (a.FIN_IV < 0.5), 'FIN_PREDICT_POWER'] = 'STRONG'
+                a.loc[(a.FIN_IV >= 0.1) & (a.FIN_IV < 0.3), 'FIN_PREDICT_POWER'] = 'MEDIUM'
+                a.loc[(a.FIN_IV >= ivlmt) & (a.FIN_IV < 0.1), 'FIN_PREDICT_POWER'] = 'WEAK'
+                a.loc[(a.FIN_IV < ivlmt), 'FIN_PREDICT_POWER'] = 'NONE'
+                a.FIN_PREDICT_POWER.fillna('NONE', inplace=True)
+
+                # Create KEEP_VARNAME
+                a['KEEP_VARNAME'] = a['NET_BUC'] + "_" + a['VAR_NAME']
+                a.loc[(a.NET_BUC.isnull()), 'KEEP_VARNAME'] = np.NaN
+                a.loc[(a.NET_BUC == 'DF'), 'KEEP_VARNAME'] = a['VAR_NAME']
+
+                # Create NET_VAR
+                a.loc[(~a.VAR_NAME.isnull()), 'NET_VARS'] = (~pd.isnull(a.IV_B10)).astype(int) + (
+                ~pd.isnull(a.IV_B5)).astype(int) + (~pd.isnull(a.IV_B4)).astype(int) + (~pd.isnull(a.IV_B3)).astype(
+                    int) + (~pd.isnull(a.IV_BM)).astype(int) + (~pd.isnull(a.IV_BS)).astype(int)
+
+                # Rearrange column Names
+                inc_all_iv = a[
+                    ['VAR_NAME', 'BASE_VARNAME', 'IV_B10', 'IV_B5', 'IV_B4', 'IV_B3', 'IV_BM', 'IV_BS', 'MAX_IV',
+                     'MAX_PREDICT_POWER', 'CONS_IV_BUC', 'BEST_IV_BUC', 'NET_BUC', 'FIN_IV', 'FIN_PREDICT_POWER',
+                     'KEEP_VARNAME', 'NET_VARS']]
+
+            elif inc_b10 == "NO":
+                temp = temp.sort_values(['BASE_VARNAME', 'VAR_NAME', 'NET_IV'],
+                                        ascending=[True, True, False]).reset_index(drop=True)
+                # create MAX_IV
+                a = temp.copy()
+                a['BIN'] = a['VAR_NAME'].str.extract(pat='(^B[0-9]0?|BM)')
+                a.BIN.fillna('BS', inplace=True)
+                a = a[['BASE_VARNAME', 'BIN', 'NET_IV']].pivot(index='BASE_VARNAME', columns='BIN', values='NET_IV')
+                a.reset_index(inplace=True)
+                a = a[['BASE_VARNAME', 'B10', 'B5', 'B4', 'B3', 'BM', 'BS']]
+                a.columns = ['VAR_NAME', 'IV_B10', 'IV_B5', 'IV_B4', 'IV_B3', 'IV_BM', 'IV_BS']
+                a['BASE_VARNAME'] = a['VAR_NAME'].replace(regex=True,
+                                                          to_replace=r'^(TUP|TDO|TMAX|TMIN|TAVG|TCFV|TSTD|TVOL|TR)[1-6]_?',
+                                                          value=r'')
+                a['BASE_VARNAME'] = a['BASE_VARNAME'].replace(regex=True, to_replace=r'[0-9]$', value=r'')
+                a['MAX_IV'] = a[['IV_B5', 'IV_B4', 'IV_B3', 'IV_BM', 'IV_BS']].max(axis=1, skipna=True)
+
+                # Create MAX_PREDICT_POWER
+                a.loc[a.MAX_IV >= 0.5, 'MAX_PREDICT_POWER'] = 'SUSPICIOUS'
+                a.loc[(a.MAX_IV >= 0.3) & (a.MAX_IV < 0.5), 'MAX_PREDICT_POWER'] = 'STRONG'
+                a.loc[(a.MAX_IV >= 0.1) & (a.MAX_IV < 0.3), 'MAX_PREDICT_POWER'] = 'MEDIUM'
+                a.loc[(a.MAX_IV >= ivlmt) & (a.MAX_IV < 0.1), 'MAX_PREDICT_POWER'] = 'WEAK'
+                a.loc[(a.MAX_IV < ivlmt), 'MAX_PREDICT_POWER'] = 'NONE'
+                a.MAX_PREDICT_POWER.fillna('NONE', inplace=True)
+
+                # Create CONS_IV_BUC based on ivlmt,IVRLMT,ivdlmt
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B3'] >= ivlmt)), 'R3'] = a['IV_B3'] / a['MAX_IV']
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B3'] >= ivlmt)), 'D3'] = a['MAX_IV'] - a['IV_B3']
+
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B4'] >= ivlmt)), 'R4'] = a['IV_B4'] / a['MAX_IV']
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B4'] >= ivlmt)), 'D4'] = a['MAX_IV'] - a['IV_B4']
+
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B5'] >= ivlmt)), 'R5'] = a['IV_B5'] / a['MAX_IV']
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['IV_B5'] >= ivlmt)), 'D5'] = a['MAX_IV'] - a['IV_B5']
+
+                a.loc[((a['R3'] >= ivrlmt) & (a['D3'] <= ivdlmt)), 'CONS_3'] = 1
+                a.loc[((a['R4'] >= ivrlmt) & (a['D4'] <= ivdlmt)), 'CONS_4'] = 1
+                a.loc[((a['R5'] >= ivrlmt) & (a['D5'] <= ivdlmt)), 'CONS_5'] = 1
+
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['MAX_IV'] == a['IV_BS'])), 'CONS_IV_BUC'] = 'DF'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['MAX_IV'] == a['IV_BM'])), 'CONS_IV_BUC'] = 'BM'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['CONS_5'] == 1)), 'CONS_IV_BUC'] = 'B5'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['CONS_4'] == 1)), 'CONS_IV_BUC'] = 'B4'
+                a.loc[((a['MAX_IV'] >= ivlmt) & (a['CONS_3'] == 1)), 'CONS_IV_BUC'] = 'B3'
+
+                # Create BEST_IV_BUC Based on Missing value information
+                a.loc[(a['IV_BM'] >= ivlmt), 'BEST_IV_BUC'] = 'BM'
+                a.loc[(a['IV_BS'] >= ivlmt), 'BEST_IV_BUC'] = 'DF'
+                a.loc[(a['IV_B3'] >= ivlmt), 'BEST_IV_BUC'] = 'B3'
+                a.loc[(a['IV_B4'] >= ivlmt), 'BEST_IV_BUC'] = 'B4'
+                a.loc[(a['IV_B5'] >= ivlmt), 'BEST_IV_BUC'] = 'B5'
+
+                # Create NET_BUC
+                a['CONS_B'] = a.CONS_IV_BUC.str.extract(pat='([0-9]0?)').astype(float)
+                a['BEST_B'] = a.BEST_IV_BUC.str.extract(pat='([0-9]0?)').astype(float)
+                a.loc[(a['MAX_PREDICT_POWER'] == 'NONE'), 'NET_BUC'] = np.NaN
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE'), 'NET_BUC'] = np.NaN
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] == 'BM') & (
+                (pd.isnull(a['CONS_B']) == True) | (pd.isnull(a['BEST_B']) == True)), 'NET_BUC'] = 'BM'
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                (pd.isnull(a['CONS_B']) == True) | (pd.isnull(a['BEST_B']) == True)), 'NET_BUC'] = ''
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == True) & (pd.isnull(a['BEST_B']) == True), 'NET_BUC'] = 'DF'
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == False) & (pd.isnull(a['BEST_B']) == False) & (
+                      a['CONS_B'] == a['BEST_B']), 'NET_BUC'] = a['BEST_IV_BUC']
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == False) & (pd.isnull(a['BEST_B']) == False) & (
+                      a['CONS_B'] > a['BEST_B']), 'NET_BUC'] = a['BEST_IV_BUC']
+                a.loc[(a['MAX_PREDICT_POWER'] != 'NONE') & (a['BEST_IV_BUC'] != 'BM') & (
+                pd.isnull(a['CONS_B']) == False) & (pd.isnull(a['BEST_B']) == False) & (
+                      a['CONS_B'] < a['BEST_B']), 'NET_BUC'] = a['CONS_IV_BUC']
+
+                # Create FIN_IV & FIN_PREDICT_POWER
+
+                a.loc[(a['NET_BUC'] == 'B5'), 'FIN_IV'] = a['IV_B5']
+                a.loc[(a['NET_BUC'] == 'B4'), 'FIN_IV'] = a['IV_B4']
+                a.loc[(a['NET_BUC'] == 'B3'), 'FIN_IV'] = a['IV_B3']
+                a.loc[(a['NET_BUC'] == 'BM'), 'FIN_IV'] = a['IV_BM']
+                a.loc[(a['NET_BUC'] == 'DF'), 'FIN_IV'] = a['IV_BS']
+                a.loc[a.FIN_IV >= 0.5, 'FIN_PREDICT_POWER'] = 'SUSPICIOUS'
+                a.loc[(a.FIN_IV >= 0.3) & (a.FIN_IV < 0.5), 'FIN_PREDICT_POWER'] = 'STRONG'
+                a.loc[(a.FIN_IV >= 0.1) & (a.FIN_IV < 0.3), 'FIN_PREDICT_POWER'] = 'MEDIUM'
+                a.loc[(a.FIN_IV >= ivlmt) & (a.FIN_IV < 0.1), 'FIN_PREDICT_POWER'] = 'WEAK'
+                a.loc[(a.FIN_IV < ivlmt), 'FIN_PREDICT_POWER'] = 'NONE'
+                a.FIN_PREDICT_POWER.fillna('NONE', inplace=True)
+
+                # Create KEEP_VARNAME
+                a['KEEP_VARNAME'] = a['NET_BUC'] + "_" + a['VAR_NAME']
+                a.loc[(a.NET_BUC.isnull()), 'KEEP_VARNAME'] = np.NaN
+                a.loc[(a.NET_BUC == 'DF'), 'KEEP_VARNAME'] = a['VAR_NAME']
+
+                # Create NET_VAR
+                a.loc[(~a.VAR_NAME.isnull()), 'NET_VARS'] = (~pd.isnull(a.IV_B10)).astype(int) + (
+                ~pd.isnull(a.IV_B5)).astype(int) + (~pd.isnull(a.IV_B4)).astype(int) + (~pd.isnull(a.IV_B3)).astype(
+                    int) + (~pd.isnull(a.IV_BM)).astype(int) + (~pd.isnull(a.IV_BS)).astype(int)
+
+                # Rearrange column Names
+                inc_all_iv = a[['VAR_NAME', 'BASE_VARNAME', 'IV_B5', 'IV_B4', 'IV_B3', 'IV_BM', 'IV_BS', 'MAX_IV',
+                                'MAX_PREDICT_POWER', 'CONS_IV_BUC', 'BEST_IV_BUC', 'NET_BUC', 'FIN_IV',
+                                'FIN_PREDICT_POWER', 'KEEP_VARNAME', 'NET_VARS']]
+
+            else:
+                print("PLEASE SPECIFY YES|NO IN inc_b10 PARAMETER!")
+                return False
+
+            # Creating Top-Vars dataframe
+            inc_top_iv = inc_all_iv[(inc_all_iv.MAX_IV >= ivlmt) & (~inc_all_iv.NET_BUC.isnull())]
+            inc_top_iv.reset_index(drop=True, inplace=True)
+
+            # Print Results
+            # BIN DISTRIBUTION OF TOP IV SELECTED VARIABLES
+            print("---------------------------------------------------")
+            print("")
+            print("BIN DISTRIBUTION OF TOP IV SELECTED VARIABLES.")
+            print(inc_top_iv.groupby('NET_BUC')['VAR_NAME'].count().to_frame().reset_index())
+
+            # PREDICTED POWER TOP IV SELECTED VARIABLES
+            print("---------------------------------------------------")
+            print("")
+            print("PREDICTED POWER TOP IV SELECTED VARIABLES.")
+            print(inc_top_iv.groupby('FIN_PREDICT_POWER')['VAR_NAME'].count().to_frame().reset_index())
+
+            print("---------------------------------------------------")
+            print("")
+            tot_vars = sum(inc_all_iv.NET_VARS) + iv_chimiss.VAR_NAME.nunique()
+            print("TOTAL VARIABLES CONSIDERED.MATCH WITH IV_VARS FROM PREVIOUS STAGE:-", str(tot_vars))
+
+            # Saving column_details as excel and pickle file in outcopy
+            try:
+                iv_chimiss.to_pickle(r"{}\{}_{}_iv_chimiss.pkl".format(str(tnp), str(indsn), str(iv_per)))
+                iv_chimiss.to_excel(r"{}\{}_{}_iv_chimiss.xlsx".format(str(tnp), str(indsn), str(iv_per)))
+
+                inc_all_iv.to_pickle(r"{}\{}_{}_inc_alliv.pkl".format(str(oup), str(indsn), str(iv_per)))
+                inc_all_iv.to_excel(r"{}\{}_{}_inc_alliv.xlsx".format(str(oup), str(indsn), str(iv_per)))
+
+                inc_top_iv.to_pickle(r"{}\{}_{}_inc_top_iv.pkl".format(str(oup), str(indsn), str(iv_per)))
+                inc_top_iv.to_excel(r"{}\{}_{}_inc_top_iv.xlsx".format(str(oup), str(indsn), str(iv_per)))
+
+                print("Following output files successfully saved in Output and Temp folder")
+                print("{}_{}_iv_chimiss".format(str(indsn), str(iv_per)))
+                print("{}_{}_inc_alliv".format(str(indsn), str(iv_per)))
+                print("{}_{}_inc_top_iv".format(str(indsn), str(iv_per)))
+            except:
+                print("Failed to save the output. Please check your output path!")
+                return False
+
+            return True
+    else:
+        return False
