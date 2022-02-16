@@ -1,0 +1,121 @@
+def cons_bi(src="", wrk="", oup="", cop="", tnp="", indsn=""):
+    """
+    :param src: Path to input folder
+    :param wrk: Path to Work folder
+    :param oup: Path to Output folder
+    :param cop: Path to Outcopy folder
+    :param tnp: Path to Temporary folder
+    :param indsn: Name of the Input Data frame
+    :return: Dataframes containing bivariate analysis results of all the variables(Base + TR3 +TR6 variables)
+    """
+    # Check if all the input parameters are properly specified
+    if src == "" or wrk == "" or oup == "" or cop == "" or tnp == "" or indsn == "":
+        print("INPUT PARAMETERS ARE NOT SPECIFIED PROPERLY IN FUNCTION CALL!")
+        return False
+
+    # import sys library for searching the below location for USD package(s)
+    import numpy as np
+    import pandas as pd
+    import os.path
+    from os import path
+    import sys
+    sys.path.insert(1, r'..\.')
+    from Libraries.check_path import check_path
+    print("CHECK: IF SPECIFIED PATHS ARE VALID")
+    check1 = check_path(src, wrk, oup, cop, tnp)
+    if check1:
+        print("---------------------------------------------------")
+        print("")
+        # Consolidate all WOE dataframes
+        if path.exists(r"{}\{}_bi_woe.pkl".format(str(cop), str(indsn))):
+            if path.exists(r"{}\{}_tr3_bi_woe.pkl".format(str(cop), str(indsn))):
+                if path.exists(r"{}\{}_tr6_bi_woe.pkl".format(str(cop), str(indsn))):
+                    #read Bi-variate results
+                    df = pd.read_pickle(r"{}\{}_bi_woe.pkl".format(str(cop), str(indsn)))
+                    tr3_df = pd.read_pickle(r"{}\{}_tr3_bi_woe.pkl".format(str(cop), str(indsn)))
+                    tr6_df = pd.read_pickle(r"{}\{}_tr6_bi_woe.pkl".format(str(cop), str(indsn)))
+                    temp = df.append(tr3_df, ignore_index=True)
+                    temp2 = temp.append(tr6_df, ignore_index=True)
+                    temp2.drop_duplicates(keep='first', inplace=True)
+                    temp2.reset_index(drop=True, inplace=True)
+                    # Saving output files in output folder
+                    try:
+                        temp2.to_pickle(r"{}\{}_all_bi_woe.pkl".format(str(oup), str(indsn)))
+                        temp2.to_excel(r"{}\{}_all_bi_woe.xlsx".format(str(oup), str(indsn)))
+                        print("All WOE details file has been successfully saved in Output folder")
+                    except:
+                        print("Failed to save the output. Please check your output path!")
+                        return False
+                else:
+                    print ("TR6 WOE details dataset does not exists!.Check the outcopy folder")
+                    return False
+            else:
+                print ("TR3 WOE details dataset does not exists!.Check the outcopy folder")
+                return False
+        else:
+            print ("Input WOE details dataset does not exists!.Check the outcopy folder")
+            return False
+
+        # Consolidate all IV dataframes
+        if path.exists(r"{}\{}_bi_iv.pkl".format(str(cop), str(indsn))):
+            if path.exists(r"{}\{}_tr3_bi_iv.pkl".format(str(cop), str(indsn))):
+                if path.exists(r"{}\{}_tr6_bi_iv.pkl".format(str(cop), str(indsn))):
+                    df = pd.read_pickle(r"{}\{}_bi_iv.pkl".format(str(cop), str(indsn)))
+                    tr3_df = pd.read_pickle(r"{}\{}_tr3_bi_iv.pkl".format(str(cop), str(indsn)))
+                    tr6_df = pd.read_pickle(r"{}\{}_tr6_bi_iv.pkl".format(str(cop), str(indsn)))
+                    temp = df.append(tr3_df, ignore_index=True)
+                    temp2 = temp.append(tr6_df, ignore_index=True)
+                    temp2.drop_duplicates(keep='first', inplace=True)
+                    temp2.reset_index(drop=True, inplace=True)
+                    # Saving output files in output folder
+                    try:
+                        temp2.to_pickle(r"{}\{}_all_bi_iv.pkl".format(str(oup), str(indsn)))
+                        temp2.to_excel(r"{}\{}_all_bi_iv.xlsx".format(str(oup), str(indsn)))
+                        print("---------------------------------------------------")
+                        print("")
+                        print("All IV details file has been successfully saved in Output folder")
+                    except:
+                        print("Failed to save the output. Please check your output path!")
+                        return False
+                else:
+                    print ("TR6 IV details dataset does not exists!.Check the outcopy folder")
+                    return False
+            else:
+                print ("TR3 IV details dataset does not exists!.Check the outcopy folder")
+                return False
+        else:
+            print ("Input IV details dataset does not exists!.Check the outcopy folder")
+            return False
+
+        # Consolidate all chisq details dataframes
+        if path.exists(r"{}\{}_bi_chisq.pkl".format(str(cop), str(indsn))):
+            if path.exists(r"{}\{}_tr3_bi_chisq.pkl".format(str(cop), str(indsn))):
+                if path.exists(r"{}\{}_tr6_bi_chisq.pkl".format(str(cop), str(indsn))):
+                    df = pd.read_pickle(r"{}\{}_bi_chisq.pkl".format(str(cop), str(indsn)))
+                    tr3_df = pd.read_pickle(r"{}\{}_tr3_bi_chisq.pkl".format(str(cop), str(indsn)))
+                    tr6_df = pd.read_pickle(r"{}\{}_tr6_bi_chisq.pkl".format(str(cop), str(indsn)))
+                    temp = df.append(tr3_df, ignore_index=True)
+                    temp2 = temp.append(tr6_df, ignore_index=True)
+                    temp2.drop_duplicates(keep='first', inplace=True)
+                    temp2.reset_index(drop=True, inplace=True)
+                    # Saving output files in output folder
+                    try:
+                        temp2.to_pickle(r"{}\{}_all_bi_chisq.pkl".format(str(oup), str(indsn)))
+                        temp2.to_excel(r"{}\{}_all_bi_chisq.xlsx".format(str(oup), str(indsn)))
+                        print("---------------------------------------------------")
+                        print("")
+                        print("All Chisqr details file has been successfully saved in Output folder")
+                    except:
+                        print("Failed to save the output. Please check your output path!")
+                        return False
+                else:
+                    print ("TR6 Chisqr details dataset does not exists!.Check the outcopy folder")
+                    return False
+            else:
+                print ("TR3 Chisqr details dataset does not exists!.Check the outcopy folder")
+                return False
+        else:
+            print ("Input Chisqr details dataset does not exists!.Check the outcopy folder")
+            return False
+    else:
+        return False
