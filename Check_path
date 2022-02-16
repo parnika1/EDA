@@ -1,0 +1,40 @@
+
+def check_path(src="",wrk="",oup="",cop="",tnp=""):
+    #import necessary libraries
+    import os.path
+    from os import path
+    
+    #Check if the following folders exits
+    if path.exists(r"{}".format(str(src))):
+        print ("Input Directory Exists.")             
+    else:
+        print ("Input Directory Does Not Exists!. Check the assigned path")
+        return False
+        
+    if path.exists(r"{}".format(str(wrk))):
+        print ("Work Directory Exists.")
+    else:
+        print ("Work Directory Does Not Exists!. Check the assigned path")
+        return False
+        
+    if path.exists(r"{}".format(str(oup))):
+        print ("Output Directory Exists.")
+    else:
+        print ("Output Directory Does Not Exists!. Check the assigned path")
+        return False
+    
+    if path.exists(r"{}".format(str(cop))):
+        print ("Outcopy Directory Exists.")
+    else:
+        print ("Outcopy Directory Does Not Exists!. Check the assigned path")
+        return False
+        
+    if path.exists(r"{}".format(str(tnp))):
+        print ("Temporary Directory Exists.")
+
+    else:
+        print ("Temporary Directory Does Not Exists!.Check the assigned path")
+        return False
+    
+    
+    return True
